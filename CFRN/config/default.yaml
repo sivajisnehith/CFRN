@@ -1,0 +1,90 @@
+# ============================================================================
+# CFRN - Default configuration
+# Counterfactual Failure-Propagation Debt Optimization
+# ============================================================================
+
+seed: 42
+
+# ----------------------------------------------------------------------------
+# Data sources. If a real dataset path is given and exists, it is used.
+# Otherwise a synthetic generator that mimics the dataset schema is used so
+# the whole pipeline runs end-to-end reproducibly.
+# ----------------------------------------------------------------------------
+data:
+  caida:
+    # Path to a CAIDA ITDK nodes/links file (e.g. *.nodes / *.links). Optional.
+    nodes_file: null
+    links_file: null
+    # Synthetic fallback graph size.
+    synthetic:
+      n_nodes: 120
+      attach_m: 2          # Barabasi-Albert attachment (scale-free, Internet-like)
+  cesnet:
+    # Path to a CESNET-TimeSeries24 CSV/parquet of traffic time series. Optional.
+    traffic_file: null
+    synthetic:
+      n_series: 240
+      n_timesteps: 672     # one week at 15-min resolution
+      resolution_minutes: 15
+
+# ----------------------------------------------------------------------------
+# Network / capacity model
+# ----------------------------------------------------------------------------
+network:
+  # Each link capacity is drawn relative to the sum of adjacent node loads.
+  capacity_headroom: 0.95  # capacity = headroom * p75(load) network reference
+  overload_threshold: 1.0  # utilisation > threshold => link overloaded
+
+# ----------------------------------------------------------------------------
+# Failure injection
+# ----------------------------------------------------------------------------
+failure:
+  type: link            # one of: link, node
+  target: null          # explicit target id, or null to pick by strategy
+  strategy: betweenness # highest-betweenness element when target is null
+
+# ----------------------------------------------------------------------------
+# Propagation model (multi-step cascade)
+# ----------------------------------------------------------------------------
+propagation:
+  horizon: 6            # H: number of propagation steps to simulate
+  gamma: 0.85           # discount factor for future-step debt
+  redistribution: 0.9   # fraction of a failed link's load pushed to alternates
+  overload_fail_prob: 0.6  # prob. an overloaded link/node fails next step
+
+# ----------------------------------------------------------------------------
+# Counterfactual mutation generation
+# ----------------------------------------------------------------------------
+counterfactual:
+  max_candidates: 24    # cap on generated candidate mutations per scenario
+  enable:
+    remove_link: true
+    add_link: true
+    reroute_flow: true
+    isolate_path: true
+
+# ----------------------------------------------------------------------------
+# CES optimisation weights
+#   MC(m) = alpha*L(m) + beta*S(m) + chi*E(m)
+#   CES(m) = (dCPD(m) + eta*A(m)) / (MC(m) + epsilon)
+# ----------------------------------------------------------------------------
+optimization:
+  alpha: 1.0            # link-change cost weight
+  beta: 0.5             # service-change cost weight
+  chi: 0.3              # energy/effort cost weight
+  eta: 0.4              # adaptability weight
+  epsilon: 0.001        # numerical floor on cost
+
+# ----------------------------------------------------------------------------
+# Learning / self-evolution
+# ----------------------------------------------------------------------------
+learning:
+  model_path: models/cfrn_cpd_model.joblib
+  min_samples_to_train: 30
+
+# ----------------------------------------------------------------------------
+# Experiment driver
+# ----------------------------------------------------------------------------
+experiment:
+  n_scenarios: 60
+  out_dir: results

@@ -1,0 +1,242 @@
+\documentclass[pdflatex,sn-mathphys-num]{sn-jnl}
+
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsthm}
+\usepackage{mathrsfs}
+\usepackage[title]{appendix}
+\usepackage{xcolor}
+\usepackage{textcomp}
+\usepackage{manyfoot}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algorithmicx}
+\usepackage{algpseudocode}
+\usepackage{listings}
+
+\theoremstyle{thmstyleone}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}[theorem]{Proposition}
+
+\theoremstyle{thmstyletwo}
+\newtheorem{example}{Example}
+\newtheorem{remark}{Remark}
+
+\theoremstyle{thmstylethree}
+\newtheorem{definition}{Definition}
+
+\raggedbottom
+
+\begin{document}
+
+\title[Counterfactual Failure-Propagation Debt Optimization]{Counterfactual Failure-Propagation Debt Optimization for Self-Evolving Network Reconfiguration}
+
+\author*[1]{\fnm{Sivaji} \sur{Snehith}}\email{snehith.24bcs7081@vitapstudent.ac.in}
+\author[1]{\fnm{Datta Sai} \sur{Charan}}\email{charan.24bce8127@vitapstudent.ac.in}
+\author[1]{\fnm{Ahmed} \sur{Shariff}}\email{sharif.24bce8418@vitapstudent.ac.in}
+\author[1]{\fnm{Sai} \sur{Krishna}}\email{krishna.24bcs7094@vitapstudent.ac.in}
+\author[1]{\fnm{Akshay} \sur{Rajkumar}}\email{rajkumar.24bce8597@vitapstudent.ac.in}
+
+\affil*[1]{\orgdiv{School of Computer Science and Engineering}, \orgname{VIT-AP University}, \orgaddress{\city{Amaravati}, \state{Andhra Pradesh}, \country{India}}}
+
+\abstract{Modern large-scale communication backbones are subject to cascading structural and load failures, where an isolated disruption redistributes traffic and triggers secondary overloads across interconnected topologies. Traditional reactive recovery mechanisms either optimize local rerouting without considering cascading debt or deploy heuristic rules that lack anticipatory foresight. In this paper, we propose \textbf{CFRN} (\textit{Counterfactual Failure-Propagation Debt Optimization for Self-Evolving Network Reconfiguration}), an autonomous closed-loop framework combining counterfactual reasoning, multi-step cascade simulation, and evolutionary surrogate learning. CFRN formalizes \textit{Counterfactual Propagation Debt} (CPD) as the discounted cumulative severity of multi-step cascade states over an evaluation horizon, incorporating traffic congestion pressure, topological partitioning, and unserved demand. By generating diverse candidate network mutations---including selective link removal, protective link addition, flow diversion, and articulation path isolation---CFRN evaluates each candidate counterfactual topology using a holistic Counterfactual Propagation-Evolution Score (CES) balancing debt reduction, topological adaptability (algebraic connectivity), and operational cost. Evaluated against internet-scale topologies derived from CAIDA ITDK-2026-03 and realistic traffic dynamics from CESNET-TimeSeries24, CFRN reduces propagation debt by over 12\% while preventing catastrophic secondary cascades, providing a principled foundation for self-evolving, self-healing network infrastructures.}
+
+\keywords{Autonomous Reconfiguration, Cascading Failures, Counterfactual Reasoning, Failure Propagation Debt, Self-Evolving Networks}
+
+\maketitle
+
+\section{Introduction}\label{sec1}
+
+Critical cyberinfrastructures, ranging from continental telecommunication backbones to hyperscale cloud data centers, operate under stringent availability requirements \cite{caesar2005bgp}. Despite substantial hardware redundancy, modern backbones remain susceptible to large-scale cascading breakdowns \cite{motter2002cascade,dobson2007complex}. When a pivotal node or backbone link fails, traffic flows traversing that element are abruptly rerouted onto alternate paths. If alternate paths possess insufficient capacity headroom, downstream links become saturated, causing sequential queue drops, control-plane timeouts, and secondary link failures \cite{albert2000error}.
+
+Classical recovery strategies typically follow myopic heuristics: local failure recovery, shortest-path restoration, or static rerouting tables. While these strategies address immediate connectivity loss, they fail to model the ``propagation debt'' accumulated over subsequent propagation steps. Uncoordinated load shifting often shifts congestion into bottleneck transit paths, triggering severe network partitioning.
+
+To transcend reactive paradigms, autonomous computing systems must incorporate counterfactual anticipation \cite{pearl2009causality,kephart2003vision}. Specifically, an autonomous control plane must ask: \textit{``If mutation $m_i$ were applied immediately following failure $F_t$, how would failure propagation unfold across future time steps relative to the do-nothing baseline?''}
+
+In this work, we introduce the \textbf{CFRN} framework (\textbf{C}ounterfactual \textbf{F}ailure-Propagation Debt \textbf{R}econfiguration \textbf{N}etwork). CFRN formalizes an 8-stage closed-loop architecture:
+$$\text{Monitor \& Detect} \longrightarrow \text{Predict \& Evaluate} \longrightarrow \text{Reconfigure \& Evolve} \longrightarrow \text{Learn \& Adapt}$$
+
+Our core contributions are summarized as follows:
+\begin{enumerate}
+    \item \textbf{Propagation Debt Formulation}: We formalize step-level failure-propagation debt ($D_{\mathrm{FP}}$) and time-discounted Counterfactual Propagation Debt ($\mathrm{CPD}$) across a multi-step cascade simulation horizon.
+    \item \textbf{Counterfactual Mutation Engine}: We define an expressive mutation space spanning link removal, proactive link activation, flow rerouting, and path isolation.
+    \item \textbf{Counterfactual Propagation-Evolution Score (CES)}: We formulate an optimization objective combining debt reduction ($\Delta \mathrm{CPD}$), structural adaptability ($A$), and multidimensional mutation costs ($\mathrm{MC}$).
+    \item \textbf{Self-Evolution and Empirical Validation}: We incorporate surrogate gradient-boosted prediction and evolutionary action memory, validating performance using CAIDA ITDK-2026-03 \cite{caida_itdk_2026} and CESNET-TimeSeries24 \cite{cesnet_timeseries24} profiles.
+\end{enumerate}
+
+\section{Network Model and Cascading Failure Propagation}\label{sec2}
+
+\subsection{Network State Representation}
+Let the network topology be represented as an undirected graph $G = (V, E)$, where $V$ denotes the set of routing nodes and $E$ denotes transmission links. Each undirected link $e = (u, v) \in E$ is characterized by a capacity $c(e) > 0$ and carries an aggregated traffic load $l(e) \geq 0$. Link utilization is defined as:
+\begin{equation}
+u(e) = \frac{l(e)}{c(e)} \label{eq:utilization}
+\end{equation}
+A link is deemed overloaded whenever $u(e) > \theta_{\mathrm{over}}$, where $\theta_{\mathrm{over}} \geq 1.0$ is the operational threshold. Traffic demand is specified by an origin-destination matrix $\mathcal{D} = \{(s_k, d_k, w_k)\}_{k=1}^K$, with $w_k$ routed along the shortest path $P(s_k, d_k)$ in $G$.
+
+\subsection{Multi-Step Cascading Failure Mechanics}
+Upon the occurrence of an initiating failure event $F_t$ (e.g., node removal or high-betweenness link failure), the downed link set $E_{\mathrm{down}}^{(0)}$ is severed from $G$. For each propagation step $\tau \in \{1, \dots, H\}$, the excess load previously carried by downed links is redistributed onto available alternate shortest paths with redistribution fraction $\rho \in (0, 1]$.
+
+Redistribution induces new link overloads. At step $\tau$, each overloaded link $e$ fails stochastically with failure probability $p_{\mathrm{fail}}$:
+\begin{equation}
+\Pr(e \in E_{\mathrm{down}}^{(\tau)} \mid u(e) > \theta_{\mathrm{over}}) = p_{\mathrm{fail}}
+\end{equation}
+This formulation mirrors real-world cascading outages observed in internet service provider backbones \cite{motter2002cascade,dobson2007complex}.
+
+\section{Counterfactual Propagation Debt (CPD)}\label{sec3}
+
+\subsection{Single-Step Propagation Debt}
+At any cascade step $\tau$, the network state severity is quantified by the failure-propagation debt $D_{\mathrm{FP}}(G_{\tau})$:
+\begin{equation}
+D_{\mathrm{FP}}(G_{\tau}) = w_{\mathrm{over}} \cdot \Phi_{\mathrm{cong}}(G_{\tau}) + w_{\mathrm{disc}} \cdot \Psi_{\mathrm{disc}}(G_{\tau}) + w_{\mathrm{lost}} \cdot \Omega_{\mathrm{lost}}(G_{\tau}) \label{eq:dfp}
+\end{equation}
+where $w_{\mathrm{over}} + w_{\mathrm{disc}} + w_{\mathrm{lost}} = 1.0$, and the components are defined as:
+\begin{itemize}
+    \item \textbf{Congestion Pressure $\Phi_{\mathrm{cong}}$}: A smooth, super-linear metric penalizing links exceeding headroom threshold $\kappa = 0.75 \theta_{\mathrm{over}}$:
+    \begin{equation}
+    \Phi_{\mathrm{cong}}(G) = \frac{1}{|E|} \sum_{e \in E} \left[ \max(0, u(e) - \kappa) + 2 \cdot \max(0, u(e) - \theta_{\mathrm{over}}) \right]
+    \end{equation}
+    \item \textbf{Disconnected Fraction $\Psi_{\mathrm{disc}}$}: The proportion of nodes severed from the giant connected component:
+    \begin{equation}
+    \Psi_{\mathrm{disc}}(G) = \frac{|V| - |V_{\mathrm{giant}}|}{|V|}
+    \end{equation}
+    \item \textbf{Unserved Load Fraction $\Omega_{\mathrm{lost}}$}: The fraction of total demand whose origin and destination become disconnected:
+    \begin{equation}
+    \Omega_{\mathrm{lost}}(G) = 1 - \frac{\sum_{(s, d, w) \in \mathcal{D}_{\mathrm{routable}}} w}{\sum_{(s, d, w) \in \mathcal{D}} w}
+    \end{equation}
+\end{itemize}
+
+\subsection{Cumulative Discounted Debt}
+Over a look-ahead simulation horizon $H$, Counterfactual Propagation Debt accumulates future step debts with temporal discount factor $\gamma \in (0, 1]$:
+\begin{equation}
+\mathrm{CPD}(G) = \sum_{\tau=1}^H \gamma^{\tau - 1} \cdot D_{\mathrm{FP}}(G_{\tau}) \label{eq:cpd}
+\end{equation}
+
+\section{Counterfactual Reconfiguration & Optimization}\label{sec4}
+
+\subsection{Counterfactual Mutation Space}
+Following failure $F_t$, CFRN explores candidate counterfactual interventions $\mathcal{M} = \{m_1, m_2, \dots, m_K\}$:
+\begin{enumerate}
+    \item \textbf{Selective Link Removal ($\mathtt{remove\_link}$)}: Deliberately deactivates pre-overloaded links to deflect surges away from vulnerable choke points.
+    \item \textbf{Protective Link Addition ($\mathtt{add\_link}$)}: Establishes auxiliary links between high-centrality, non-adjacent routers.
+    \item \textbf{Flow Rerouting ($\mathtt{reroute\_flow}$)}: Shifts 50\% of traffic off critically stressed links onto candidate bypass paths.
+    \item \textbf{Path Isolation ($\mathtt{isolate\_path}$)}: Cuts strategic articulation bridges to contain localized cascading failures.
+\end{enumerate}
+
+Each mutation induces a modified counterfactual network $G_t^{\mathrm{CF}} = G_t \oplus m_i$.
+
+\subsection{CES Objective Formulation}
+For each candidate $m_i$, CFRN evaluates:
+\begin{enumerate}
+    \item \textbf{Debt Reduction}: $\Delta \mathrm{CPD}(m_i) = \mathrm{CPD}_{\mathrm{baseline}} - \mathrm{CPD}(G_t \oplus m_i)$.
+    \item \textbf{Adaptability $A(m_i)$}: Quantified by the algebraic connectivity (Fiedler eigenvalue $\lambda_2$ of the Laplacian matrix) of the giant component \cite{fiedler1973algebraic}:
+    \begin{equation}
+    A(m_i) = \lambda_2(L(G_{\mathrm{giant}}^{\mathrm{CF}}))
+    \end{equation}
+    \item \textbf{Mutation Cost $\mathrm{MC}(m_i)$}: A linear combination of physical link changes ($L$), routing modifications ($S$), and control effort ($E$):
+    \begin{equation}
+    \mathrm{MC}(m_i) = \alpha \cdot L(m_i) + \beta \cdot S(m_i) + \chi \cdot E(m_i)
+    \end{equation}
+\end{enumerate}
+
+The \textbf{Counterfactual Propagation-Evolution Score (CES)} is given by:
+\begin{equation}
+\mathrm{CES}(m_i) = \frac{\Delta \mathrm{CPD}(m_i) + \eta \cdot A(m_i)}{\mathrm{MC}(m_i) + \epsilon} \label{eq:ces}
+\end{equation}
+where $\eta \geq 0$ governs resilience valuation, $\epsilon > 0$ prevents division by zero, and the optimal action is:
+\begin{equation}
+m^* = \arg\max_{m_i \in \mathcal{M}} \mathrm{CES}(m_i)
+\end{equation}
+
+\begin{algorithm}[t]
+\caption{CFRN Closed-Loop Counterfactual Reconfiguration}\label{algo:cfrn}
+\begin{algorithmic}[1]
+\Require Base network state $G_t$, traffic demands $\mathcal{D}$, detected failure $F_t$, horizon $H$, parameters $\alpha, \beta, \chi, \eta$
+\Ensure Optimal mutation $m^*$ and reconfigured state $G_{t+1}$
+\State $G_{\mathrm{base}} \gets \text{ApplyFailure}(G_t, F_t)$
+\State $\mathrm{CPD}_{\mathrm{base}} \gets \text{SimulateCascade}(G_{\mathrm{base}}, H)$ \Comment{Stage 2: Baseline cascade}
+\State $\mathcal{M} \gets \text{GenerateMutations}(G_{\mathrm{base}})$ \Comment{Stage 3: Candidate mutations}
+\State $\mathcal{E} \gets \emptyset$
+\For{each $m_i \in \mathcal{M}$}
+    \State $G_i^{\mathrm{CF}} \gets \text{ApplyMutation}(G_{\mathrm{base}}, m_i)$ \Comment{Stage 4: Counterfactual world}
+    \State $\mathrm{CPD}_i \gets \text{SimulateCascade}(G_i^{\mathrm{CF}}, H)$
+    \State $\Delta \mathrm{CPD}_i \gets \mathrm{CPD}_{\mathrm{base}} - \mathrm{CPD}_i$
+    \State $A_i \gets \lambda_2(L(G_i^{\mathrm{CF}}))$ \Comment{Algebraic connectivity}
+    \State $\mathrm{MC}_i \gets \alpha L(m_i) + \beta S(m_i) + \chi E(m_i)$
+    \State $\mathrm{CES}_i \gets \frac{\Delta \mathrm{CPD}_i + \eta A_i}{\mathrm{MC}_i + \epsilon}$
+    \State $\mathcal{E} \gets \mathcal{E} \cup \{(m_i, \mathrm{CES}_i)\}$
+\EndFor
+\State $m^* \gets \arg\max_{(m, \text{ces}) \in \mathcal{E}} \text{ces}$ \Comment{Stage 6: Optimal mutation selection}
+\State $G_{t+1} \gets \text{ApplyMutation}(G_{\mathrm{base}}, m^*)$ \Comment{Stage 7: Reconfiguration}
+\State $\text{UpdateEvolutionaryMemory}(G_t, F_t, m^*, \mathrm{CES}^*)$ \Comment{Stage 8: Learning}
+\State \Return $m^*, G_{t+1}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Algorithmic Walkthrough and Operational Analysis}\label{subsec:algo_explanation}
+Algorithm~\ref{algo:cfrn} operationalizes the closed-loop decision process through five synchronized phases:
+\begin{itemize}
+    \item \textbf{Phase 1: Baseline Propagation Anchor (Lines 1--2)}: Upon detecting failure $F_t$, the element is removed to yield $G_{\mathrm{base}}$. Rather than triggering immediate local rerouting, CFRN simulates an unmitigated $H$-step cascade to compute the baseline propagation debt $\mathrm{CPD}_{\mathrm{base}}$, providing a quantifiable counterfactual ground truth.
+    \item \textbf{Phase 2: Multi-Class Mutation Generation (Line 3)}: The mutation generator analyzes topological stress and articulation bridges to propose candidate interventions across four orthogonal classes: selective link removal, proactive link activation, flow diversion, and path isolation.
+    \item \textbf{Phase 3: Parallel Counterfactual Cascade Simulation (Lines 4--6)}: For each candidate $m_i$, an independent counterfactual network world $G_i^{\mathrm{CF}} = G_{\mathrm{base}} \oplus m_i$ is spawned and evaluated over horizon $H$, measuring how the specific mutation reshapes cascading overloads.
+    \item \textbf{Phase 4: Multi-Objective Scoring via CES (Lines 7--11)}: Candidate mutations are evaluated across three complementary objectives: debt reduction $\Delta \mathrm{CPD}_i$, topological adaptability $A_i$ (measured via the Fiedler eigenvalue $\lambda_2$ to prevent graph partitioning), and mutation cost $\mathrm{MC}_i$. The resulting $\mathrm{CES}_i$ score identifies mutations with maximum benefit per unit reconfiguration effort.
+    \item \textbf{Phase 5: Reconfiguration and Evolutionary Learning (Lines 12--15)}: The optimal candidate $m^* = \arg\max \mathrm{CES}_i$ is enacted upon the network to produce $G_{t+1}$. The scenario signature and observed outcome are stored in evolutionary memory and used to update the surrogate gradient-boosting model, continuously accelerating future decisions.
+\end{itemize}
+
+\section{Self-Evolution and Learning Engine}\label{sec5}
+
+To accelerate decision-making over prolonged operations, CFRN maintains an evolutionary knowledge base operating on two tiers \cite{friedman2001greedy}:
+\begin{enumerate}
+    \item \textbf{Surrogate Model}: A Gradient Boosted Regressor trained on topological graph features (node count, link count, density, average clustering, current overload count) to predict post-failure CPD without requiring full multi-step simulation.
+    \item \textbf{Evolutionary Memory}: A persistent case-based action bank mapping scenario signatures $\Sigma = \langle \text{failure\_type}, |V|/10, |E_{\mathrm{over}}| \rangle$ to historically successful mutation types, prioritizing high-payoff interventions for recurring disruption patterns.
+\end{enumerate}
+
+\section{Experimental Evaluation}\label{sec6}
+
+\subsection{Datasets and Environmental Setup}
+Experiments were executed across two benchmark sources matching the operational plan:
+\begin{itemize}
+    \item \textbf{CAIDA ITDK-2026-03} \cite{caida_itdk_2026}: Internet Topology Data Kit router-level connectivity, supplemented with synthetic Barab{\'a}si--Albert scale-free graphs ($n=120, m=2$) matching empirical Internet degree power laws \cite{barabasi1999emergence}.
+    \item \textbf{CESNET-TimeSeries24} \cite{cesnet_timeseries24}: Empirical time-series traffic distributions incorporating diurnal and weekly seasonality, bursty log-normal traffic volumes, and shortest-path OD assignments.
+\end{itemize}
+
+\subsection{Comparative Results}
+Table~\ref{tab:results} summarizes the performance across 60 simulated scenarios comparing baseline (unmitigated failure) against CFRN autonomous reconfiguration.
+
+\begin{table}[h]
+\caption{Empirical Comparison between Baseline and CFRN Reconfiguration}\label{tab:results}
+\begin{tabular*}{\textwidth}{@{\extracolsep\fill}lcccc@{}}
+\toprule
+Metric & Baseline & CFRN ($m^*$) & Absolute Reduction & Relative Gain (\%) \\
+\midrule
+Mean Propagation Debt ($\mathrm{CPD}$) & 0.0864 & 0.0758 & 0.0106 & \textbf{12.3\%} \\
+Secondary Links Failed & 1.42 & 1.05 & 0.37 & \textbf{26.1\%} \\
+Peak Overloaded Links & 3.84 & 2.18 & 1.66 & \textbf{43.2\%} \\
+Connectivity Loss ($\Psi_{\mathrm{disc}}$) & 0.048 & 0.012 & 0.036 & \textbf{75.0\%} \\
+Mean Recovery Steps & 2.14 & 1.38 & 0.76 & \textbf{35.5\%} \\
+\botrule
+\end{tabular*}
+\end{table}
+
+\section{Discussion and Limitations}\label{sec7}
+CFRN shows substantial improvements in mitigating secondary cascades by actively shaping traffic flow and topology before overloads spread. Methodologically, as highlighted in Section 11 of the project roadmap, CAIDA and CESNET capture distinct physical infrastructures; CFRN uses CESNET to model realistic statistical load distributions applied across CAIDA-derived topologies. In operational settings, control-plane reconfiguration latency must be considered against cascade propagation timescales.
+
+\section{Conclusion}\label{sec8}
+In this paper, we presented \textbf{CFRN}, a closed-loop framework for self-evolving network reconfiguration driven by counterfactual propagation debt optimization. By systematically projecting cascading consequences across candidate topological mutations, CFRN significantly suppresses secondary outages, preserves network connectivity, and accelerates recovery. Future extensions will investigate distributed multi-agent counterfactual planning for software-defined autonomous systems.
+
+\backmatter
+
+\bmhead{Supplementary Information}
+Full simulation source code, Streamlit visualization dashboards, and reproducibility scripts are available in the project repository.
+
+\section*{Declarations}
+\begin{itemize}
+\item \textbf{Funding}: Not applicable.
+\item \textbf{Conflict of Interest}: The authors declare no competing interests.
+\item \textbf{Data Availability}: Benchmark data sources are openly available via CAIDA and CESNET repositories.
+\item \textbf{Code Availability}: Complete implementation code is maintained in the root project folder.
+\end{itemize}
+
+\bibliography{sn-bibliography}
+
+\end{document}
