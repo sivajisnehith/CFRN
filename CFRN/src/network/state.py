@@ -42,13 +42,16 @@ class NetworkState:
     # ---- construction ----------------------------------------------------
     def copy(self) -> "NetworkState":
         """Deep-ish copy used to build counterfactual worlds."""
-        return NetworkState(
+        ns = NetworkState(
             graph=self.graph.copy(),
             link_load=dict(self.link_load),
             link_capacity=dict(self.link_capacity),
             demands=list(self.demands),
             overload_threshold=self.overload_threshold,
         )
+        if hasattr(self, "_pending_load") and self._pending_load is not None:
+            ns._pending_load = dict(self._pending_load)  # type: ignore[attr-defined]
+        return ns
 
     # ---- queries ----------------------------------------------------------
     def utilisation(self) -> Dict[EdgeKey, float]:

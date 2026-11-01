@@ -50,7 +50,8 @@ propagation:
   horizon: 6            # H: number of propagation steps to simulate
   gamma: 0.85           # discount factor for future-step debt
   redistribution: 0.9   # fraction of a failed link's load pushed to alternates
-  overload_fail_prob: 0.6  # prob. an overloaded link/node fails next step
+  overload_fail_prob: 0.6  # base prob. an overloaded link/node fails next step
+  overload_beta: 0.4    # sensitivity beta to excess relative overload in p_fail(u)
 
 # ----------------------------------------------------------------------------
 # Counterfactual mutation generation
@@ -62,25 +63,40 @@ counterfactual:
     add_link: true
     reroute_flow: true
     isolate_path: true
+  reroute_fractions: [0.25, 0.5, 0.75]  # discrete candidate diversion fractions
+  adaptive_diversion: true              # whether to compute dynamic headroom diversion fraction
 
 # ----------------------------------------------------------------------------
-# CES optimisation weights
-#   MC(m) = alpha*L(m) + beta*S(m) + chi*E(m)
-#   CES(m) = (dCPD(m) + eta*A(m)) / (MC(m) + epsilon)
+# Principled Optimization & Feasibility Constraints
 # ----------------------------------------------------------------------------
 optimization:
-  alpha: 1.0            # link-change cost weight
-  beta: 0.5             # service-change cost weight
-  chi: 0.3              # energy/effort cost weight
-  eta: 0.4              # adaptability weight
-  epsilon: 0.001        # numerical floor on cost
+  mechanism: constrained  # one of: constrained, robust, weighted, ratio
+  alpha: 1.0              # physical link change cost weight (OpEx)
+  beta: 0.5               # routing / service rule update cost weight (OpEx)
+  chi: 0.3                # control plane signaling / effort cost weight (OpEx)
+  eta: 0.4                # adaptability scaling coefficient (spectral gap to debt)
+  epsilon: 0.001          # numerical floor for ratio comparison
+  # Explicit operational feasibility constraints
+  budget_max: 2.5         # maximum allowable mutation cost (covers link addition + reroute)
+  utilization_max: 2.0    # maximum allowable peak link utilization
+  min_giant_ratio: 0.85   # minimum preserved giant component fraction
+  min_algebraic_conn: 0.001 # minimum algebraic connectivity (non-partition)
+  max_unserved_demand: 0.4  # maximum allowable unserved demand fraction
+  # Uncertainty-aware robust optimization
+  risk_aversion: 0.5      # kappa: penalty on cascade rollout standard deviation
+  n_uncertainty_samples: 3 # stochastic rollout count for robust evaluation
 
 # ----------------------------------------------------------------------------
 # Learning / self-evolution
 # ----------------------------------------------------------------------------
 learning:
   model_path: models/cfrn_cpd_model.joblib
-  min_samples_to_train: 30
+  min_samples_to_train: 20       # minimum training samples to activate surrogate
+  retrain_interval: 10           # periodic retraining interval (epochs)
+  screening_top_k: 5             # minimum top-k candidates to simulate after screening
+  uncertainty_margin: 0.35       # margin tau_screen for candidate acquisition
+  drift_threshold_factor: 3.0    # Page-Hinkley drift multiplier
+  enable_screening: true         # active surrogate screening in closed loop
 
 # ----------------------------------------------------------------------------
 # Experiment driver
